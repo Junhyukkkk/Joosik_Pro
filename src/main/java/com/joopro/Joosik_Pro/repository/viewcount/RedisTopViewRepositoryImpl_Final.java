@@ -30,8 +30,10 @@ public class RedisTopViewRepositoryImpl_Final implements TopViewRepositoryV2{
     private final RedissonClient redissonClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    private static final String VIEW_DELTA_SET = "views:delta";
     private static final String POPULAR_POSTS_SET_KEY = "popularPostsZSet";
     private static final String LOCK_KEY = "topViewReadWriteLock";
+
 
     @Transactional
     @PostConstruct
@@ -66,6 +68,7 @@ public class RedisTopViewRepositoryImpl_Final implements TopViewRepositoryV2{
     @Override
     public PostDtoResponse returnPost(Long postId) {
         RReadWriteLock rwLock = redissonClient.getReadWriteLock(LOCK_KEY);
+        PostDtoResponse postDtoResponse = null;
         boolean locked = false;
         try {
             locked = rwLock.readLock().tryLock(1, 2, TimeUnit.SECONDS);
@@ -76,24 +79,39 @@ public class RedisTopViewRepositoryImpl_Final implements TopViewRepositoryV2{
 
             String redisKey = "post:" + postId;
             String postJson = redisTemplate.opsForValue().get(redisKey);
-            Post post = null;
 
             if (postJson != null) {
                 try {
                     redisTemplate.opsForZSet().incrementScore(POPULAR_POSTS_SET_KEY, String.valueOf(postId), 1.0);
-                    PostDtoResponse postDtoResponse = objectMapper.readValue(postJson, PostDtoResponse.class);
-                    return postDtoResponse;
+                    postDtoResponse = objectMapper.readValue(postJson, PostDtoResponse.class);
                 } catch (Exception e) {
-                    log.warn("Redis에서 Post JSON 역직렬화 실패, DB 조회로 대체", e);
-                }
-            }
-            // 캐시에 없으면 DB에서 조회
-            if (post == null) {
-                post = postRepository.findById(postId);
-                post.increaseViewCount(1L);
-            }
-            return PostDtoResponse.of(post);
+                    log.warn("Redis에서 Post JSON 역직렬화 실패, DB 조회로 대체. postId={}", postId, e);
+                    Post post = postRepository.findById(postId);
+                    if (post == null) return null;
 
+                    postDtoResponse = PostDtoResponse.of(post);
+                    try {
+                        String toJson = objectMapper.writeValueAsString(postDtoResponse);
+                        redisTemplate.opsForValue().set(redisKey, toJson); // 재적재
+                    } catch (JsonProcessingException ex) {
+                        log.warn("DTO 직렬화 실패, 캐시 미적재. postId={}", postId, ex);
+                    }
+                }
+            } else{
+                Post post = postRepository.findById(postId);
+                if (post == null) return null;
+
+                postDtoResponse = PostDtoResponse.of(post);
+
+//                try {
+//                    String toJson = objectMapper.writeValueAsString(postDtoResponse);
+//                    redisTemplate.opsForValue().set(redisKey, toJson); // 미스 하면 캐시 적재
+//                } catch (JsonProcessingException ex) {
+//                    log.warn("DTO 직렬화 실패, 캐시 미적재. postId={}", postId, ex);
+//                }
+
+                redisTemplate.opsForZSet().incrementScore(VIEW_DELTA_SET, String.valueOf(postId), 1.0); // 캐시에 없는 게시글 조회수 업데이트용 zset 증가
+            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             log.error("returnPost 중 인터럽트 발생", e);
@@ -102,6 +120,7 @@ public class RedisTopViewRepositoryImpl_Final implements TopViewRepositoryV2{
             if (locked && rwLock.readLock().isHeldByCurrentThread()) {
                 rwLock.readLock().unlock();
             }
+            return postDtoResponse;
         }
     }
 
@@ -159,11 +178,28 @@ public class RedisTopViewRepositoryImpl_Final implements TopViewRepositoryV2{
                 log.warn("ZSet 조회수 동기화 실패 - id: {}", idStr, e);
             }
         }
+        redisTemplate.delete(POPULAR_POSTS_SET_KEY);
+
+        Set<String> newPostIds = redisTemplate.opsForZSet().range(VIEW_DELTA_SET, 0, -1);
+        if (newPostIds == null || newPostIds.isEmpty()) return;
+        for (String idStr : newPostIds) {
+            try {
+                Long postId = Long.parseLong(idStr);
+                Double score = redisTemplate.opsForZSet().score(VIEW_DELTA_SET, idStr);
+                if (score == null) continue;
+                Post post = postRepository.findById(postId);
+                if (post != null) {
+                    post.increaseViewCount(score.longValue());
+                    postRepository.save(post);
+                }
+            } catch (Exception e) {
+                log.warn("ZSet 조회수 동기화 실패 - id: {}", idStr, e);
+            }
+        }
+        redisTemplate.delete(VIEW_DELTA_SET);
     }
 
     private void syncDbToRedis() {
-        redisTemplate.delete(POPULAR_POSTS_SET_KEY);
-
         Set<String> keys = redisTemplate.keys("post:*");
         if (keys != null && !keys.isEmpty()) {
             redisTemplate.delete(keys);

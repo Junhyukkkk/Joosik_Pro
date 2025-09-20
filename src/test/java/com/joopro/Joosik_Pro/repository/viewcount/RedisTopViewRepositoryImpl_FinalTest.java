@@ -111,6 +111,7 @@ class RedisTopViewRepositoryImpl_FinalTest {
     @Test
     void 전체적인_레디스_작동_확인() {
         final String ZSET_KEY = "popularPostsZSet";
+        final String VIEW_DELTA_SET = "views:delta";
         Set<String> keysBefore = redisTemplate.keys("post:*");
         // 확실히 10개가 들어왔는지
         assertThat(keysBefore).hasSize(10);
@@ -124,11 +125,9 @@ class RedisTopViewRepositoryImpl_FinalTest {
             topViewRepository.returnPost(post1.getId()); // 내부에서 ZSET score +1
         }
 
-        em.flush();
-        em.clear();
-
-        Post p1After = postRepository.findById(post1.getId());
-        assertThat(p1After.getViewCount()).isEqualTo(16L);
+        Double zscoreNotInCache = redisTemplate.opsForZSet()
+                .score(VIEW_DELTA_SET, String.valueOf(post1.getId()));
+        assertThat(zscoreNotInCache).isEqualTo(15L);
 
 
         int hits2 = 5;
@@ -174,6 +173,11 @@ class RedisTopViewRepositoryImpl_FinalTest {
                 String.valueOf(post4.getId()),
                 String.valueOf(post3.getId())
         );
+        Post p1After = postRepository.findById(post1.getId());
+        assertThat(p1After.getViewCount()).isEqualTo(16L);
+
+        Post p10After = postRepository.findById(post10.getId());
+        assertThat(p10After.getViewCount()).isEqualTo(15L);
 
     }
 

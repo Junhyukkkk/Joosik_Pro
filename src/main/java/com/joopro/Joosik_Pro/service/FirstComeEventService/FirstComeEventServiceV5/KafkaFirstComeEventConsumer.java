@@ -10,6 +10,7 @@ import org.springframework.batch.core.Job;
 import org.springframework.batch.core.JobParameters;
 import org.springframework.batch.core.JobParametersBuilder;
 import org.springframework.batch.core.launch.JobLauncher;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Service;
@@ -26,7 +27,8 @@ public class KafkaFirstComeEventConsumer {
     private final StringRedisTemplate stringRedisTemplate;
     private final Job saveParticipantsJob;
     private final KafkaFirstComeEventProducer kafkaFirstComeEventProducer;
-    private static final int MAX_PARTICIPANTS = 100;
+    @Value("${event.max-participants:100}")
+    private int MAX_PARTICIPANTS;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final MeterRegistry meterRegistry;
 

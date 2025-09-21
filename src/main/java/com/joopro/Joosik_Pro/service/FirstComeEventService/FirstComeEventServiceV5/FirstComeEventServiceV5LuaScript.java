@@ -8,6 +8,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Tag;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -30,7 +31,8 @@ public class FirstComeEventServiceV5LuaScript implements FirstComeEventService {
     private final DefaultRedisScript<Long> tryParticipateScript;
     private final MeterRegistry meterRegistry;
 
-    private static final int MAX_PARTICIPANTS = 100;
+    @Value("${event.max-participants:100}")
+    private int MAX_PARTICIPANTS;
 
     @Override
     public boolean tryParticipate(Long stockId, Long memberId) {

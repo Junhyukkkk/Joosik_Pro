@@ -6,6 +6,7 @@ import com.joopro.Joosik_Pro.repository.FirstComeEventRepository.FirstComeEventR
 import com.joopro.Joosik_Pro.service.FirstComeEventService.FirstComeEventServiceSave.SaveService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
@@ -39,7 +40,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 @Transactional
 public class FirstComeEventServiceV4 implements FirstComeEventService{
     private final SaveService saveService;
-    private static final int MAX_PARTICIPANTS = 100;
+    @Value("${event.max-participants:100}")
+    private int MAX_PARTICIPANTS;
     private final FirstComeEventRepositoryV1 firstComeEventRepositoryV1;
     // eventId → 참여자 ID Set (중복 확인용)
     private final ConcurrentHashMap<Long, Set<Long>> participantMap = new ConcurrentHashMap<>();

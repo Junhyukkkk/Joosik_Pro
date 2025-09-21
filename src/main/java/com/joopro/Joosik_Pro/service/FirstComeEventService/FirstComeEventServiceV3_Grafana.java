@@ -8,6 +8,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
@@ -29,7 +30,8 @@ public class FirstComeEventServiceV3_Grafana implements FirstComeEventService {
     private final SaveService saveService;
     private final MeterRegistry meterRegistry;
 
-    private static final int MAX_PARTICIPANTS = 100;
+    @Value("${event.max-participants:100}")
+    private int MAX_PARTICIPANTS;
     private final FirstComeEventRepositoryV1 firstComeEventRepositoryV1;
     private final ConcurrentHashMap<Long, Set<Long>> participantMap = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, AtomicInteger> counterMap = new ConcurrentHashMap<>();
